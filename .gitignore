@@ -1,6 +1,9 @@
 # Prerequisites
 *.d
 
+main
+*.ch8
+
 # Compiled Object files
 *.slo
 *.lo

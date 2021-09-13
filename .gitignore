@@ -2,6 +2,7 @@
 *.d
 
 main
+CHIP8
 *.ch8
 
 # Compiled Object files

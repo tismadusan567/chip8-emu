@@ -1,6 +1,9 @@
 #include <cstdint>
+#include <iostream>
 #include <fstream>
 #include <ctime>
+#include <vector>
+#include <bitset>
 #include <SFML/Graphics.hpp>
 
 
@@ -10,44 +13,177 @@ public:
     Cpu();
     void cycle();
     void execute(uint16_t opcode);
-    void load(char* filename);
+    void load(const char* filename);
     void loop();
     void print_state();
+    void update_display();
+    void clear_display();
+    sf::Keyboard::Key code_to_key(uint8_t code);
+    uint8_t key_to_code();
+    bool is_any_key_pressed();
 private:
     uint8_t Vx[16];
-    uint16_t I;
-    uint8_t delay;
-    uint8_t sound;
+    uint16_t I = 0;
+    uint8_t delay = 0;
+    uint8_t sound = 0;
     uint16_t pc = 0x200;
     uint8_t sp = 0;
     uint16_t stack[16];
     uint8_t ram[4096];
-    uint32_t display[64 * 32];
+    uint8_t display_pixels[64 * 32] = {0};
+    std::vector<sf::RectangleShape> display_rectangles;
+    int pixel_size = 20;
     const uint32_t start_adress = 0x200;
-
+    sf::RenderWindow window;
 };
 
 void test()
 {
     Cpu cpu;
     cpu.load("space.ch8");
-    //cpu.print_state();
-    // cpu.execute(0xA250);
-    // cpu.execute(0x6495);
-    // cpu.execute(0x6733);
-    // cpu.execute(0xFF65);
+    cpu.loop();
 }
 
-Cpu::Cpu()
+Cpu::Cpu() 
+    : window(sf::VideoMode(64 * pixel_size, 32 * pixel_size), "CHIP8")
+    , display_rectangles(64*32)
 {
     std::srand((unsigned)time(0));
+    for(int i=0;i<64;i++)
+    {
+        for(int j=0;j<32;j++)
+        {
+            display_rectangles[i + j*64].setSize(sf::Vector2f(float(pixel_size), float(pixel_size)));
+            display_rectangles[i + j*64].setFillColor(sf::Color::Blue);
+            display_rectangles[i + j*64].setPosition(i*pixel_size,j*pixel_size);
+        }
+    }
+
+}
+
+void Cpu::update_display()
+{
+    for(int i=0;i<64;i++)
+    {
+        for(int j=0;j<32;j++)
+        {
+            display_rectangles[i + j*64].setFillColor(display_pixels[i + j*64] ? sf::Color::Red : sf::Color::Blue);
+        }
+    }
+}
+
+void Cpu::clear_display()
+{
+    for(int i=0;i<64;i++)
+    {
+        for(int j=0;j<32;j++)
+        {
+            display_pixels[i + j*64] = 0;
+        }
+    }
 }
 
 void Cpu::cycle()
 {
-    uint16_t opcode = ram[pc];
-    
+    uint16_t opcode = (ram[pc] << 2*4) + ram[pc+1];
+    execute(opcode);
 }
+
+void Cpu::load(const char* filename)
+{
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+    if (file.is_open())
+    {
+        int size = file.tellg();
+        char* buf = new char[size];
+        file.seekg(0, std::ios::beg);
+        file.read(buf, size);
+        file.close();
+        for(int i = 0;i < size;i++)
+        {
+            ram[start_adress + i] = buf[i];
+        }
+        delete[] buf;
+    }
+}
+
+void Cpu::loop()
+{
+    window.setVerticalSyncEnabled(true);
+    window.setFramerateLimit(60);
+
+    // sf::View view(sf::Vector2f(0.f, 0.f),sf::Vector2f(640.f, 320.f));
+    // //view.zoom(0.1f);
+    // window.setView(view);
+
+    // sf::Image image = sf::Image::create(200, 200, sf::Color::Blue);
+
+    float deltaTime;
+    float fps;
+    sf::Clock clock;
+    std::srand((unsigned)time(0));
+
+    while (window.isOpen())
+    {
+        //deltaTime / fps
+        deltaTime = clock.restart().asSeconds();
+        fps = 1.f / deltaTime;
+
+        //events
+        sf::Event event; 
+        while (window.pollEvent(event))
+        {
+            switch(event.type)
+            {
+                case sf::Event::Closed:
+                    window.close();
+                    break;
+                case sf::Event::Resized:
+                    // view.setCenter(window.getView().getCenter());
+                    // view.setSize(sf::Vector2f(event.size.width, event.size.height));
+                    // window.setView(view);
+                    break;
+            }
+        }
+        window.clear();
+        if(delay > 0) delay--;
+        if(sound > 0)
+        {
+            printf("\ab");
+            sound--;
+        }
+        cycle();
+        update_display();
+        for(auto& x : display_rectangles)
+        {
+            window.draw(x);
+        }
+        window.display();
+    }
+}
+
+void Cpu::print_state()
+{
+    printf("Program counter: %X\n", pc);
+    printf("I register: %X\n", I);
+    printf("Delay timer: %X\n", delay);
+    printf("Sound timer: %X\n", sound);
+    printf("### Registers ###\n");
+    for(int i=0;i<16;i++)
+    {
+        printf("\tV%d:\t%X\n", i, Vx[i]);
+    }
+    printf("\n### Stack ###\n");
+    printf("Stack pointer: %X\n", sp);
+    for(int i=0;i<16;i++)
+    {
+        printf("%d:\t%X\n", i, stack[i]);
+    }
+    printf("------------------------\n");
+}
+
+
+
 
 void Cpu::execute(uint16_t opcode)
 {
@@ -65,13 +201,14 @@ void Cpu::execute(uint16_t opcode)
         // Clear the display.
         if(opcode == 0x00E0)
         {
-            
+            clear_display();
         }
         // 00EE - RET
         // Return from a subroutine.
         if(opcode == 0x00EE)
         {
             pc = stack[sp];
+            pc -= 2; //at the end of the function it returns to the original value
             sp--;
         }
     }
@@ -81,6 +218,7 @@ void Cpu::execute(uint16_t opcode)
     if(first == 1)
     {
         pc = nnn;
+        pc -= 2; //at the end of the function it returns to the original value
     }
 
     // 2nnn - CALL addr
@@ -90,6 +228,7 @@ void Cpu::execute(uint16_t opcode)
         sp++;
         stack[sp] = pc;
         pc = nnn;
+        pc -= 2; //at the end of the function it returns to the original value
     }
 
     // 3xkk - SE Vx, byte
@@ -226,6 +365,7 @@ void Cpu::execute(uint16_t opcode)
     if(first == 0xB)
     {
         pc = nnn + Vx[0];
+        pc -= 2; //at the end of the function it returns to the original value
     }
 
     // Cxkk - RND Vx, byte
@@ -240,21 +380,31 @@ void Cpu::execute(uint16_t opcode)
     // at (Vx, Vy), set VF = collision
     if(first == 0xD)
     {
-        printf("Draw\n");
+        Vx[0xF] = 0;
+        for(int i=0;i<last;i++)
+        {
+            uint8_t byte = ram[I+i];
+            std::bitset<8> bset(byte); //bitset stores in reverse order
+            for(int j=0;j<8;j++)
+            {
+                if(display_pixels[(Vx[x]+j)%64 + ((Vx[y]+i)%32)*64] && bset[7-j]) Vx[0xF] = 1;
+                display_pixels[(Vx[x]+j)%64 + ((Vx[y]+i)%32)*64] ^= bset[7-j];
+            }
+        }
     }
 
     // Ex9E - SKP Vx
     // Skip next instruction if key with the value of Vx is pressed.
     if(first == 0xE && kk == 0x9E)
     {
-
+        if(sf::Keyboard::isKeyPressed(code_to_key(Vx[x]))) pc += 2;
     }
 
     // ExA1 - SKNP Vx
     // Skip next instruction if key with the value of Vx is not pressed.
     if(first == 0xE && kk == 0xA1)
     {
-
+        if(!sf::Keyboard::isKeyPressed(code_to_key(Vx[x]))) pc += 2;
     }
 
     //F start instructions
@@ -271,6 +421,8 @@ void Cpu::execute(uint16_t opcode)
         // Wait for a key press, store the value of the key in Vx.
         if(kk == 0x0A)
         {
+            while(!is_any_key_pressed());
+            Vx[x] = key_to_code();
 
         }
 
@@ -331,97 +483,104 @@ void Cpu::execute(uint16_t opcode)
             }
         }
     }
-    print_state();
+
+    //move to the next instruction
+    pc += 2;
+    //print_state();
 }
 
-void Cpu::load(char* filename)
+bool Cpu::is_any_key_pressed()
+	{
+		for (int k = -1; k < sf::Keyboard::KeyCount; ++k)
+		{
+			if (sf::Keyboard::isKeyPressed(static_cast<sf::Keyboard::Key>(k)))
+				return true;
+		}
+		return false;
+	}
+
+sf::Keyboard::Key Cpu::code_to_key(uint8_t code)
 {
-    std::ifstream file(filename, std::ios::binary | std::ios::ate);
-    if (file.is_open())
+    switch(code)
     {
-        int size = file.tellg();
-        char* buf = new char[size];
-        file.seekg(0, std::ios::beg);
-        file.read(buf, size);
-        file.close();
-        for(int i = 0;i < size;i++)
-        {
-            ram[start_adress + i] = buf[i];
-        }
-        delete[] buf;
+        case 0x1:
+            return sf::Keyboard::Num1;
+        case 0x2:
+            return sf::Keyboard::Num2; 
+        case 0x3:
+            return sf::Keyboard::Num3;
+        case 0xC:
+            return sf::Keyboard::Num4;
+        case 0x4:
+            return sf::Keyboard::Q;
+        case 0x5:
+            return sf::Keyboard::W;
+        case 0x6:
+            return sf::Keyboard::E;
+        case 0xD:
+            return sf::Keyboard::R;
+        
+        case 0x7:
+            return sf::Keyboard::A;
+        case 0x8:
+            return sf::Keyboard::S; 
+        case 0x9:
+            return sf::Keyboard::D;
+        case 0xE:
+            return sf::Keyboard::F;
+        case 0xA:
+            return sf::Keyboard::Z;
+        case 0x0:
+            return sf::Keyboard::X;
+        case 0xB:
+            return sf::Keyboard::C;
+        case 0xF:
+            return sf::Keyboard::V;
+        default :
+            return sf::Keyboard::Unknown;
     }
 }
 
-void Cpu::loop()
+uint8_t Cpu::key_to_code()
 {
-    // sf::RenderWindow window(sf::VideoMode(64, 32), "CHIP8");
-    // window.setVerticalSyncEnabled(true);
-    // window.setFramerateLimit(60);
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::Num1))
+            return 0x1;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::Num2))
+            return 0x2; 
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::Num3))
+            return 0x3;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::Num4))
+            return 0xC;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::Q))
+            return 0x4;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::W))
+            return 0x5;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::E))
+            return 0x6;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::R))
+            return 0xD;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::A))
+            return 0x7;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::S))
+            return 0x8; 
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+            return 0x9;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::F))
+            return 0xE;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::Z))
+            return 0xA;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::X))
+            return 0x0;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::C))
+            return 0xB;
+        if(sf::Keyboard::isKeyPressed(sf::Keyboard::V))
+            return 0xF;
 
-    // sf::View view(sf::Vector2f(32.f, 16.f),sf::Vector2f(64.f, 32.f));
-    // window.setView(view);
-
-    // float deltaTime;
-    // float fps;
-    // sf::Clock clock;
-    // std::srand((unsigned)time(0));
-
-    // while (window.isOpen())
-    // {
-    //     //deltaTime / fps
-    //     deltaTime = clock.restart().asSeconds();
-    //     fps = 1.f / deltaTime;
-
-    //     //events
-    //     sf::Event event; 
-    //     while (window.pollEvent(event))
-    //     {
-    //         switch(event.type)
-    //         {
-    //             case sf::Event::Closed:
-    //                 window.close();
-    //                 break;
-    //             case sf::Event::Resized:
-    //                 view.setCenter(window.getView().getCenter());
-    //                 view.setSize(sf::Vector2f(event.size.width, event.size.height));
-    //                 window.setView(view);
-
-    //                 break;
-    //         }
-    //     }
-    //     window.display();
-    // }
-}
-
-void Cpu::print_state()
-{
-    printf("Program counter: %X\n", pc);
-    printf("I register: %X\n", I);
-    printf("Delay timer: %X\n", delay);
-    printf("Sound timer: %X\n", sound);
-    printf("### Registers ###\n");
-    for(int i=0;i<16;i++)
-    {
-        printf("\tV%d:\t%X\n", i, Vx[i]);
-    }
-    printf("\n### Stack ###\n");
-    printf("Stack pointer: %X\n", sp);
-    for(int i=0;i<16;i++)
-    {
-        printf("%d:\t%X\n", i, stack[i]);
-    }
-    printf("------------------------\n");
+        return 0x0;
 }
 
 int main()
 {
-    // Cpu *cpu = new Cpu();
-    // Cpu cpu = Cpu();
-    
-
     test();
-
-
-    
     return 0;
 }

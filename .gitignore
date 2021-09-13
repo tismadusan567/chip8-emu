@@ -4,6 +4,8 @@
 main
 CHIP8
 *.ch8
+settings.json
+.vscode
 
 # Compiled Object files
 *.slo

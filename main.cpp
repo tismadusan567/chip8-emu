@@ -132,7 +132,6 @@ void Cpu::run()
 
     float deltaTime;
     sf::Clock clock;
-    std::srand((unsigned)time(0));
 
     while (window.isOpen())
     {
@@ -440,7 +439,7 @@ void Cpu::execute(uint16_t opcode)
         // Set I = location of sprite for digit Vx.
         if(kk == 0x29)
         {
-            I = start_adress + 5 * Vx[x];
+            I = font_start_adress + 5 * Vx[x];
         }
 
         // Fx33 - LD B, Vx

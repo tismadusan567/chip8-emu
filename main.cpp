@@ -11,17 +11,18 @@ class Cpu
 {
 public:
     Cpu();
-    void cycle();
-    void execute(uint16_t opcode);
     void load(const char* filename);
-    void loop();
+    void run();
+    void execute(uint16_t opcode);
     void print_state();
+
+private:
+    void cycle();
     void update_display();
     void clear_display();
     sf::Keyboard::Key code_to_key(uint8_t code);
     uint8_t key_to_code();
-    bool is_any_key_pressed();
-private:
+
     uint8_t Vx[16];
     uint16_t I = 0;
     uint8_t delay = 0;
@@ -34,6 +35,7 @@ private:
     std::vector<sf::RectangleShape> display_rectangles;
     int pixel_size = 20;
     const uint32_t start_adress = 0x200;
+    const uint32_t font_start_adress = 0x50;
     sf::RenderWindow window;
 };
 
@@ -41,7 +43,7 @@ void test()
 {
     Cpu cpu;
     cpu.load("space.ch8");
-    cpu.loop();
+    cpu.run();
 }
 
 Cpu::Cpu() 
@@ -54,43 +56,37 @@ Cpu::Cpu()
         for(int j=0;j<32;j++)
         {
             display_rectangles[i + j*64].setSize(sf::Vector2f(float(pixel_size), float(pixel_size)));
-            display_rectangles[i + j*64].setFillColor(sf::Color::Blue);
+            display_rectangles[i + j*64].setFillColor(sf::Color::Black);
             display_rectangles[i + j*64].setPosition(i*pixel_size,j*pixel_size);
         }
     }
 
 }
 
-void Cpu::update_display()
-{
-    for(int i=0;i<64;i++)
-    {
-        for(int j=0;j<32;j++)
-        {
-            display_rectangles[i + j*64].setFillColor(display_pixels[i + j*64] ? sf::Color::Red : sf::Color::Blue);
-        }
-    }
-}
-
-void Cpu::clear_display()
-{
-    for(int i=0;i<64;i++)
-    {
-        for(int j=0;j<32;j++)
-        {
-            display_pixels[i + j*64] = 0;
-        }
-    }
-}
-
-void Cpu::cycle()
-{
-    uint16_t opcode = (ram[pc] << 2*4) + ram[pc+1];
-    execute(opcode);
-}
-
 void Cpu::load(const char* filename)
 {
+    const uint8_t fontset[] = {
+	0xF0, 0x90, 0x90, 0x90, 0xF0,		// 0
+	0x20, 0x60, 0x20, 0x20, 0x70,		// 1
+	0xF0, 0x10, 0xF0, 0x80, 0xF0,		// 2
+	0xF0, 0x10, 0xF0, 0x10, 0xF0,		// 3
+	0x90, 0x90, 0xF0, 0x10, 0x10,		// 4
+	0xF0, 0x80, 0xF0, 0x10, 0xF0,		// 5
+	0xF0, 0x80, 0xF0, 0x90, 0xF0,		// 6
+	0xF0, 0x10, 0x20, 0x40, 0x40,		// 7
+	0xF0, 0x90, 0xF0, 0x90, 0xF0,		// 8
+	0xF0, 0x90, 0xF0, 0x10, 0xF0,		// 9
+	0xF0, 0x90, 0xF0, 0x90, 0x90,		// A
+	0xE0, 0x90, 0xE0, 0x90, 0xE0,		// B
+	0xF0, 0x80, 0x80, 0x80, 0xF0,		// C
+	0xE0, 0x90, 0x90, 0x90, 0xE0,		// D
+	0xF0, 0x80, 0xF0, 0x80, 0xF0,		// E
+	0xF0, 0x80, 0xF0, 0x80, 0x80		// F
+    };
+    for(int i=0;i<16*5;i++)
+    {
+        ram[font_start_adress + i] = fontset[i];
+    }
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (file.is_open())
     {
@@ -107,52 +103,56 @@ void Cpu::load(const char* filename)
     }
 }
 
-void Cpu::loop()
+void Cpu::update_display()
 {
-    window.setVerticalSyncEnabled(true);
+    for(int i=0;i<64;i++)
+    {
+        for(int j=0;j<32;j++)
+        {
+            display_rectangles[i + j*64].setFillColor(display_pixels[i + j*64] ? sf::Color::Green : sf::Color::Black);
+        }
+    }
+}
+
+void Cpu::clear_display()
+{
+    for(int i=0;i<64;i++)
+    {
+        for(int j=0;j<32;j++)
+        {
+            display_pixels[i + j*64] = 0;
+        }
+    }
+}
+
+void Cpu::run()
+{
+    // window.setVerticalSyncEnabled(true);
     window.setFramerateLimit(60);
 
-    // sf::View view(sf::Vector2f(0.f, 0.f),sf::Vector2f(640.f, 320.f));
-    // //view.zoom(0.1f);
-    // window.setView(view);
-
-    // sf::Image image = sf::Image::create(200, 200, sf::Color::Blue);
-
     float deltaTime;
-    float fps;
     sf::Clock clock;
     std::srand((unsigned)time(0));
 
     while (window.isOpen())
     {
-        //deltaTime / fps
+        //deltaTime
         deltaTime = clock.restart().asSeconds();
-        fps = 1.f / deltaTime;
 
         //events
         sf::Event event; 
         while (window.pollEvent(event))
         {
-            switch(event.type)
-            {
-                case sf::Event::Closed:
-                    window.close();
-                    break;
-                case sf::Event::Resized:
-                    // view.setCenter(window.getView().getCenter());
-                    // view.setSize(sf::Vector2f(event.size.width, event.size.height));
-                    // window.setView(view);
-                    break;
-            }
+            if(event.type == sf::Event::Closed) window.close();
         }
         window.clear();
         if(delay > 0) delay--;
         if(sound > 0)
         {
-            printf("\ab");
+            // printf("\ab");
             sound--;
         }
-        cycle();
+        for(int i=0;i<10;i++) cycle();
         update_display();
         for(auto& x : display_rectangles)
         {
@@ -162,28 +162,11 @@ void Cpu::loop()
     }
 }
 
-void Cpu::print_state()
+void Cpu::cycle()
 {
-    printf("Program counter: %X\n", pc);
-    printf("I register: %X\n", I);
-    printf("Delay timer: %X\n", delay);
-    printf("Sound timer: %X\n", sound);
-    printf("### Registers ###\n");
-    for(int i=0;i<16;i++)
-    {
-        printf("\tV%d:\t%X\n", i, Vx[i]);
-    }
-    printf("\n### Stack ###\n");
-    printf("Stack pointer: %X\n", sp);
-    for(int i=0;i<16;i++)
-    {
-        printf("%d:\t%X\n", i, stack[i]);
-    }
-    printf("------------------------\n");
+    uint16_t opcode = (ram[pc] << 2*4) + ram[pc+1];
+    execute(opcode);
 }
-
-
-
 
 void Cpu::execute(uint16_t opcode)
 {
@@ -207,9 +190,8 @@ void Cpu::execute(uint16_t opcode)
         // Return from a subroutine.
         if(opcode == 0x00EE)
         {
-            pc = stack[sp];
-            pc -= 2; //at the end of the function it returns to the original value
             sp--;
+            pc = stack[sp];
         }
     }
 
@@ -225,8 +207,8 @@ void Cpu::execute(uint16_t opcode)
     // Call subroutine at nnn.
     if(first == 2)
     {
-        sp++;
         stack[sp] = pc;
+        sp++;
         pc = nnn;
         pc -= 2; //at the end of the function it returns to the original value
     }
@@ -303,6 +285,7 @@ void Cpu::execute(uint16_t opcode)
         {
             uint16_t sum = Vx[x] + Vx[y];
             if(sum > 0x00FF) Vx[0xF] = 1;
+            else Vx[0xF] = 0;
             sum = sum & 0x00FF;
             Vx[x] = sum;
         }
@@ -421,9 +404,15 @@ void Cpu::execute(uint16_t opcode)
         // Wait for a key press, store the value of the key in Vx.
         if(kk == 0x0A)
         {
-            while(!is_any_key_pressed());
-            Vx[x] = key_to_code();
-
+            while((Vx[x] = key_to_code()) == 0xFF)
+            {
+                //close even if waiting for key press
+                sf::Event event; 
+                while (window.pollEvent(event))
+                {
+                    if(event.type == sf::Event::Closed) window.close();
+                }
+            }
         }
 
         // Fx15 - LD DT, Vx
@@ -451,7 +440,7 @@ void Cpu::execute(uint16_t opcode)
         // Set I = location of sprite for digit Vx.
         if(kk == 0x29)
         {
-
+            I = start_adress + 5 * Vx[x];
         }
 
         // Fx33 - LD B, Vx
@@ -486,18 +475,7 @@ void Cpu::execute(uint16_t opcode)
 
     //move to the next instruction
     pc += 2;
-    //print_state();
 }
-
-bool Cpu::is_any_key_pressed()
-	{
-		for (int k = -1; k < sf::Keyboard::KeyCount; ++k)
-		{
-			if (sf::Keyboard::isKeyPressed(static_cast<sf::Keyboard::Key>(k)))
-				return true;
-		}
-		return false;
-	}
 
 sf::Keyboard::Key Cpu::code_to_key(uint8_t code)
 {
@@ -576,7 +554,28 @@ uint8_t Cpu::key_to_code()
         if(sf::Keyboard::isKeyPressed(sf::Keyboard::V))
             return 0xF;
 
-        return 0x0;
+        return 0xFF;
+}
+
+void Cpu::print_state()
+{
+    printf("Program counter: %X\n", pc);
+    printf("Opcode: %X\n", (ram[pc] << 2*4) + ram[pc+1]);
+    printf("I register: %X\n", I);
+    printf("Delay timer: %X\n", delay);
+    printf("Sound timer: %X\n", sound);
+    printf("### Registers ###\n");
+    for(int i=0;i<16;i++)
+    {
+        printf("\tV%d:\t%X\n", i, Vx[i]);
+    }
+    printf("\n### Stack ###\n");
+    printf("Stack pointer: %X\n", sp);
+    // for(int i=0;i<16;i++)
+    // {
+    //     printf("%d:\t%X\n", i, stack[i]);
+    // }
+    printf("------------------------\n");
 }
 
 int main()

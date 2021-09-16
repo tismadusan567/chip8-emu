@@ -1,10 +1,11 @@
+#include <stdio.h>
 #include <cstdint>
-#include <iostream>
 #include <fstream>
 #include <ctime>
 #include <vector>
 #include <bitset>
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 
 
 class Cpu 
@@ -130,6 +131,14 @@ void Cpu::run()
     // window.setVerticalSyncEnabled(true);
     window.setFramerateLimit(60);
 
+    sf::SoundBuffer buffer;
+    if (!buffer.loadFromFile("beep.ogg"))
+        printf("No sound file found\n");
+
+    sf::Sound beep;
+    beep.setBuffer(buffer);
+    beep.setVolume(5.f);
+
     float deltaTime;
     sf::Clock clock;
 
@@ -148,8 +157,8 @@ void Cpu::run()
         if(delay > 0) delay--;
         if(sound > 0)
         {
-            // printf("\ab");
             sound--;
+            beep.play();
         }
         for(int i=0;i<10;i++) cycle();
         update_display();
